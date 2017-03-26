@@ -4,7 +4,6 @@ VERSION='0.1'
 APPNAME='template'
 
 from waflib import Build, Logs, Options, TaskGen
-import wutils
 import subprocess
 import os
 
@@ -28,21 +27,6 @@ def options(opt):
     opt.add_option('--time',
                    help=('Enable time for the executed command'),
                    action="store_true", default=False, dest='time')
-    opt.add_option('--with-brite',
-                   help=('Use BRITE integration support, given by the indicated path,'
-                         ' to allow the use of the BRITE topology generator'),
-                   default=False, dest='with_brite')
-    opt.add_option('--with-dash',
-                   help=('libdash path - assuming ../libdash/libdash/ if not provided'
-                         '  - should contain the following subfolders: libdash/include/, build/bin/ '
-                         '  - should contain the following files: header files, shared object (libdash.so)'),
-                   default=False, dest='with_dash')
-    opt.add_option('--command-template',
-                   help=('Template of the command used to run the program given by --run;'
-                         ' It should be a shell command string containing %s inside,'
-                         ' which will be replaced by the actual program.'),
-                   type="string", default=None, dest='command_template')
-
 
 MANDATORY_NS3_MODULES = ['core', 'network', 'point-to-point', 'applications', 'mobility', 'ndnSIM']
 OTHER_NS3_MODULES = ['antenna', 'aodv', 'bridge', 'brite', 'buildings', 'click', 'config-store', 'csma', 'csma-layout', 'dsdv', 'dsr', 'emu', 'energy', 'fd-net-device', 'flow-monitor', 'internet', 'lte', 'mesh', 'mpi', 'netanim', 'nix-vector-routing', 'olsr', 'openflow', 'point-to-point-layout', 'propagation', 'spectrum', 'stats', 'tap-bridge', 'topology-read', 'uan', 'virtual-net-device', 'visualizer', 'wifi', 'wimax']
@@ -68,122 +52,6 @@ def configure(conf):
         Logs.error ("    PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH ./waf configure")
         conf.fatal ("")
 
-    # check for libdash
-    conf.env['ENABLE_DASH'] = False
-    lib_to_check = 'libdash.so'
-    libdash_default_dir = "../libdash/libdash/" # according to tutorial
-
-    if Options.options.with_dash:
-        conf.msg("Checking LIBDASH location", ("%s (given)" % Options.options.with_dash))
-        libdash_dir = os.path.abspath(os.path.join(Options.options.with_dash, "build/bin/"))
-        if os.path.exists(os.path.join(libdash_dir, lib_to_check)):
-            conf.env['WITH_DASH'] = os.path.abspath(Options.options.with_dash)
-        else:
-            # Add this module to the list of modules that won't be built
-            # if they are enabled.
-            conf.env['MODULES_NOT_BUILT'].append('dash')
-            return
-    else:
-        # No user specified '--with-dash' option, try to guess
-        # we have built it, so it should be in ../libdash/libdash/
-        libdash_dir = os.path.abspath(os.path.join(libdash_default_dir, "build/bin/"))
-        if os.path.exists(os.path.join(libdash_dir, lib_to_check)):
-            conf.msg("Checking for LIBDASH location", ("%s (guessed)" % libdash_default_dir))
-            conf.env['WITH_DASH'] = os.path.abspath(libdash_default_dir)
-        else:
-            # Add this module to the list of modules that won't be built
-            # if they are enabled.
-            conf.env['MODULES_NOT_BUILT'].append('dash')
-            return
-    # end if - libdash should be found now
-
-
-    test_code = '''
-#include "libdash.h"
-
-int main()
-{
-  return 0;
-}
-'''
-
-    conf.env.append_value('NS3_MODULE_PATH',os.path.abspath(os.path.join(conf.env['WITH_DASH'], 'build/bin/')))
-
-    conf.env['INCLUDES_DASH'] = os.path.join(conf.env['WITH_DASH'], "libdash/include/")
-    conf.env['LIBPATH_DASH'] = [ os.path.join(conf.env['WITH_DASH'], "build/bin/") ]
-
-    conf.env['DASH'] = conf.check(fragment=test_code, lib='dash', libpath=conf.env['LIBPATH_DASH'], use='DASH')
-
-    if conf.env['DASH']:
-        conf.env['ENABLE_DASH'] = True
-        conf.env.append_value('CXXDEFINES', 'NS3_LIBDASH')
-        #OTHER_NS3_MODULES.append('DASH')
-
-    # check for brite
-    conf.env['ENABLE_BRITE'] = False
-
-    lib_to_check = 'libbrite.so'
-    if Options.options.with_brite:
-        conf.msg("Checking BRITE location", ("%s (given)" % Options.options.with_brite))
-        brite_dir = Options.options.with_brite
-        if os.path.exists(os.path.join(brite_dir, lib_to_check)):
-            conf.env['WITH_BRITE'] = os.path.abspath(Options.options.with_brite)
-        else:
-            # Add this module to the list of modules that won't be built
-            # if they are enabled.
-            conf.env['MODULES_NOT_BUILT'].append('brite')
-            return
-    else:
-        # No user specified '--with-brite' option, try to guess
-        # bake.py uses ../../build, while ns-3-dev uses ../click
-        brite_dir = os.path.join('..','BRITE')
-        brite_bake_build_dir = os.path.join('..', '..', 'build')
-        brite_bake_lib_dir = os.path.join(brite_bake_build_dir, 'lib')
-        if os.path.exists(os.path.join(brite_dir, lib_to_check)):
-            conf.msg("Checking for BRITE location", ("%s (guessed)" % brite_dir))
-            conf.env['WITH_BRITE'] = os.path.abspath(brite_dir)
-# Below is not yet ready (bake does not install BRITE yet, just builds it)
-#        elif os.path.exists(os.path.join(brite_bake_lib_dir, lib_to_check)):
-#            conf.msg("Checking for BRITE location", ("%s (guessed)" % brite_bake_lib_dir))
-#            conf.env['WITH_BRITE'] = os.path.abspath(brite_bake_lib_dir)
-        else:
-            # Add this module to the list of modules that won't be built
-            # if they are enabled.
-            conf.env['MODULES_NOT_BUILT'].append('brite')
-            return
-
-    test_code = '''
-#include "Brite.h"
-int main()
-{
-  return 0;
-}
-'''
-
-    conf.env['DL'] = conf.check(mandatory=True, lib='dl', define_name='DL', uselib='DL')
-
-    conf.env.append_value('NS3_MODULE_PATH',os.path.abspath(os.path.join(conf.env['WITH_BRITE'], '.')))
-
-    conf.env['INCLUDES_BRITE'] = os.path.abspath(os.path.join(conf.env['WITH_BRITE'],'.'))
-
-    conf.env['CPPPATH_BRITE'] = [
-            os.path.abspath(os.path.join(conf.env['WITH_BRITE'],'.')),
-            os.path.abspath(os.path.join(conf.env['WITH_BRITE'],'Models'))
-            ]
-    conf.env['LIBPATH_BRITE'] = [os.path.abspath(os.path.join(conf.env['WITH_BRITE'], '.'))]
-
-    conf.env.append_value('CXXDEFINES', 'NS3_BRITE')
-    conf.env.append_value('CPPPATH', conf.env['CPPPATH_BRITE'])
-
-    conf.env['BRITE'] = conf.check(fragment=test_code, lib='brite', libpath=conf.env['LIBPATH_BRITE'], use='BRITE DL')
-
-    if conf.env['BRITE']:
-        conf.env['ENABLE_BRITE'] = True
-        conf.env.append_value('CXXDEFINES', 'NS3_BRITE')
-        conf.env.append_value('CPPPATH', conf.env['CPPPATH_BRITE'])
-        #OTHER_NS3_MODULES.append('BRITE')
-
-
     if conf.options.debug:
         conf.define ('NS3_LOG_ENABLE', 1)
         conf.define ('NS3_ASSERT_ENABLE', 1)
@@ -200,13 +68,23 @@ int main()
 def build (bld):
     deps =  ' '.join (['ns3_'+dep for dep in MANDATORY_NS3_MODULES + OTHER_NS3_MODULES]).upper ()
 
-    bld.all_task_gen = []
+    ndnTools = bld.objects (
+        target = "ndn-tools",
+        features = ["cxx"],
+        source = bld.path.ant_glob(['ndn-tools/core/**/*.cpp',
+                                    'ndn-tools/tools/ping/**/*.cpp'],
+                                    excl=['**/ndn-ping.cpp',
+                                    '**/ndn-ping-server.cpp']),
+        includes = "ndn-tools",
+        export_includes = "ndn-tools",
+        use = deps
+        )
 
     common = bld.objects (
         target = "extensions",
         features = ["cxx"],
         source = bld.path.ant_glob(['extensions/**/*.cc', 'extensions/**/*.cpp']),
-        use = deps,
+        use = deps + " ndn-tools"
         )
 
     for scenario in bld.path.ant_glob (['scenarios/*.cc']):
@@ -215,10 +93,10 @@ def build (bld):
             target = name,
             features = ['cxx'],
             source = [scenario],
-            use = deps + " extensions DASH BRITE",
-            includes = "extensions DASH BRITE"
+            use = deps + " extensions",
+            includes = "extensions",
+            export_includes = "extensions"
             )
-        bld.all_task_gen.append(app)
 
     for scenario in bld.path.ant_glob (['scenarios/*.cpp']):
         name = str(scenario)[:-len(".cpp")]
@@ -226,21 +104,31 @@ def build (bld):
             target = name,
             features = ['cxx'],
             source = [scenario],
-            use = deps + " extensions DASH BRITe",
-            includes = "extensions DASH BRITE"
+            use = deps + " extensions ndn-tools"
             )
-        bld.all_task_gen.append(app)
-
-    wutils.bld = bld
 
 def shutdown (ctx):
-    bld = wutils.bld
-    if wutils.bld is None:
-        print "Error: could not find wutils.bld"
-        return
-    env = bld.env
-
     if Options.options.run:
-        wutils.run_program(Options.options.run, env, wutils.get_command_template(env),
-                           visualize=Options.options.visualize,cwd='./')
-        raise SystemExit(0)
+        visualize=Options.options.visualize
+        mpi = Options.options.mpi
+
+        if mpi and visualize:
+            Logs.error ("You cannot specify --mpi and --visualize options at the same time!!!")
+            return
+
+        argv = Options.options.run.split (' ');
+        argv[0] = "build/%s" % argv[0]
+
+        if visualize:
+            argv.append ("--SimulatorImplementationType=ns3::VisualSimulatorImpl")
+
+        if mpi:
+            argv.append ("--SimulatorImplementationType=ns3::DistributedSimulatorImpl")
+            argv.append ("--mpi=1")
+            argv = ["openmpirun", "-np", mpi] + argv
+            Logs.error (argv)
+
+        if Options.options.time:
+            argv = ["time"] + argv
+
+        return subprocess.call (argv)
